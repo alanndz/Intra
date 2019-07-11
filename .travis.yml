@@ -1,18 +1,69 @@
 language: android
+sudo: required
+jdk: oraclejdk8
+before_cache:
+ - rm -f $HOME/.gradle/caches/modules-2/modules-2.lock
+ - rm -fr $HOME/.gradle/caches/*/plugin-resolution/
+cache:
+ directories:
+ - $HOME/.gradle/caches/
+ - $HOME/.gradle/wrapper/
+ 
 env:
- global:
- - ANDROID_API=28
- - ANDROID_BUILD_TOOLS=28.0.3
-before_install:
-  cd Android;
+  global:
+  - ANDROID_API_LEVEL=28
+  - EMULATOR_API_LEVEL=22
+  - ANDROID_BUILD_TOOLS=28.0.3
+  - ADB_INSTALL_TIMEOUT=5
+  - secure: LWkEL6oWR9RjXlSlPea3Pbz5iyIIyhIEbgATD8u6Z83hfokxlyKeL/lzQdnEW1LVxbi1kI5dRwg32c1FGFI8OhT2L2F7yg5pLXpflPYkRonk4b7e1z6TtJMvnmuJ6JFruTP7zAb3EPDLGD/JV1vz1dI+oYIg/TIRMK6y01Lw2upak/JluSB/8Upxx0Uwt979d6dwrb9G0LrtWWHfWyRk0Kn4rybsV2cRfMW5TZskw1ED/Y1xxzm+VbFVmH763GiGB6qX7hv7e5Axr3iLmqm/E8wyfDbwFHWO2OWC+tmeyRO1PpQr3vA2756Kq7vgpSUvlKehoV/+UW1gyi+JrLKdzJ1cEPj8H9uXKl9nmmbfaO1KGwOOsCLd6ZZwtIcgyTDDaLzXAeYMApGroEeaFCI6eP5amB1pD773hmZZqo9/ZXxvlwJ3vsU2BLadV7oYOY0j/rdUYOvy2p7HMM3gxjsNuolSFBlV0p1mCY7dCe6W1xJHmkpHYOfchO99swF/Fr9LAp++aaj8EBSuPeDhk64a2kvbk1udRwDcbeMIWLNtiKpf3wpEvjawSKOm+8oM1Hd5hXWCT49+xhzSxwAXQALk2jCidtM6poqppch2bIvNeLGxnAk0T1ZlTeEKR6DonUQsEHVQ+3XLFbETn/LFG78A8gn5e9ZNbNwEbU+edR8WOZw=
+  - secure: BKkmKvbRINKDJF2S7apkXCfGkcGxnBdIcXv3dIBkG2zW+0IYWbRHFq4IorqV/vC+TmSnJna/ttNpCArQ0ZGCMH6YgJ7nKjmDgIjmGBgmkfCDWLVj3mMKw3cv1vOTRRi00Q5QDu9gH7f87T/4W0EUL+wdCwWE5EErAI/aJ0sM+7kGs/7o1kMyyZVVpnWHx/fs/e3DG9PNWsVkm7VI/h3W7VyJpBwlkpocK7EjqgG0ohJHbQmMBsgo8rM1SSlrltKcR5InRMQuFRpx3OuZ/hO6g+93sVrAuPkrcC0FbwuMbkZ7YZGtXqIFZV+uiSpjK63lYEfL/715c2bc/9Fw70ZZ8oYqtaiPo/7ShcQFLKmL5th0F/XTvkWGTAL+TgUa7U/5+1vnAH7SQXUkXTMlMoj6wfWlpqfZM9PLL4ZJXS3RoqtMMPhG95uWom3IOByHff3UfOlxnzeByoUnDxXkUrHeK2aqYkG9t0vQoUSZ2fWFCZEAakLreQWxvtZh59LjzHova1wcY8ForxoJN6Kv+U6va+8bkbfqelIPy1r1gGYAQkSLJ6xJavBphTi1nJ4xV/nhXjfHvghlIs7eLICFeELL6szbVPm5wvgj6AtxqwUSBfQ1aa7+OCl7NgX5dzlk8ktIUmIAa7M6U6nFxnXv/4HRPUJuzCxIaS50qV6VF4xKTBk=
 android:
   components:
-    - tools
-    - platform-tools
-    - build-tools-$ANDROID_BUILD_TOOLS
-    - android-$ANDROID_API
-    - extra-google-m2repository
-    - extra-android-m2repository
-    - extra-google-google_play_services
+  - tools
+  - platform-tools
+  - build-tools-$ANDROID_BUILD_TOOLS
+  - android-$ANDROID_API_LEVEL
+  - android-$EMULATOR_API_LEVEL
+  - extra-google-m2repository
+  - extra-android-m2repository
+  - addon-google_apis-google-19
+  - sys-img-armeabi-v7a-addon-google_apis-google-$ANDROID_API_LEVEL
+  - sys-img-armeabi-v7a-android-$EMULATOR_API_LEVEL
+  
+  licenses:
+  - android-sdk-preview-license-.+
+  - android-sdk-license-.+
+  - google-gdk-license-.+
+before_install:
+- cd Android
+- openssl aes-256-cbc -K $encrypted_a67b635513fa_key -iv $encrypted_a67b635513fa_iv
+  -in release.jks.enc -out release.jks -d
+- chmod +x gradlew
+- "./gradlew dependencies || true"
+before_script:
+- echo no | android create avd --force -n test -t android-$EMULATOR_API_LEVEL --abi
+  armeabi-v7a
+- emulator -avd test -no-skin -no-audio -no-window &
+- android-wait-for-emulator
+- adb shell input keyevent 82 &
 script:
-   - ./gradlew clean assembleDebug check
+- "./gradlew clean build -Pbuild=dev"
+before_deploy:
+- cp $TRAVIS_BUILD_DIR/release.jks $HOME
+- cd app/build/outputs/apk/dev/
+- jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 -keystore $HOME/release.jks -storepass $storepass -keypass $keypass app-dev-unsigned.apk alanndz
+# Verification
+- jarsigner -verify app-dev-unsigned.apk
+- "${ANDROID_HOME}/build-tools/28.0.3/zipalign -v 4 app-dev-unsigned.apk aLnDNS.apk"
+deploy:
+  provider: releases
+  file: aLnDNS.apk
+  skip_cleanup: true
+ 
+  on:
+    repo: alanndz/Intra
+    tags: true
+    jdk: oraclejdk8
+  api_key:
+    secure: "RnTk1sGYPJWM9xO3aTkgh3woMtuHyUTbdVls1AhBuObxgx8Z5qGQW6HzcwFsT3yulSVJPzltTdK1zS6HLinJxXEzefoSk1LWRIzg5o0vZvvHAV50c6DVppEU2sOyqoJHSNzZ28cgPVmS9izU9mYL7/iUOmXwpcDht/0VuiBrtWQf446bYoOZ1PTxSY6VZ+LTz1/G07cvjb4EU18LVSohGqA/8wqxwvXzgh9DFWVyCskIktuIPRGWaiVCTbrp9W1RO/PG7entsLBQr6lGiQb0oJsM8qlcvJsN4AYF4S/ZlKPZFvmy24k83VN4lRB3cllFfz5vWqGYGa+0PCkqXTppcyKyrZNRRJzSNKM6azOAxOIsOXCrMDFIWwbL5XSNOFzm73qQ3/r1JSAyP3vv8gnFA8CGMnSyaPKi5dZ+j9cVRsqd1FjbP5hEBOjW6NCx18c+2wHKcS6MRo+t1XwB7fqMT1e9uBQOlV2sPvE8HRTC30B3gErKTw1iWhGU9p63r/0laXzgcHpigMlY9f2oCgpcbHfgK1CgG1XjdL1nTvTDOha+ZvspjZJl+g3o996q5DfvMV+yans4zAMfURVJHErEGaWNWpFEEKxAkqLoGPDboadqVyswN2N4QszKXDAIvDpor6phNzgAf22ah4YaO3SM0LdQRtAhpfA4KF5E30dRMa8="
+ 
